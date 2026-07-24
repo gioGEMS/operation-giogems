@@ -10,4 +10,4 @@ We have been building the Operation gioGEMS ecosystem over the past month. A liv
 
 The full source code is kept private for now and will be published to this repository as the project matures.
 
-_Latest update: work on the Operation gioGEMS site — July 17, 2026._
+_Latest update: work on the Operation gioGEMS site 
