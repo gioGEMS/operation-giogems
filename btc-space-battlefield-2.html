@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC Space Front — Live Bitcoin Fleet Battle</title>
+<style>
+  :root{
+    --void-0:#04060f;
+    --void-1:#0a0f1f;
+    --hull-cyan:#5ee7ff;
+    --hull-cyan-dim:#1c6b7a;
+    --hull-magenta:#ff4d8d;
+    --hull-magenta-dim:#7a1c46;
+    --amber:#ffb454;
+    --paper:#dbe6f0;
+    --paper-dim:#7c8aa0;
+    --grid:#132038;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; height:100%; background:var(--void-0);
+    font-family:'Courier New', ui-monospace, monospace;
+    color:var(--paper);
+    overflow:hidden;
+  }
+  #wrap{ position:relative; width:100%; height:100vh; min-height:560px; }
+  canvas#stage{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  #vignette{
+    position:absolute; inset:0; pointer-events:none;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.55) 100%);
+  }
+
+  #hud{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding:14px 18px; pointer-events:none;
+    font-size:11px; letter-spacing:1px;
+  }
+  .panel{
+    background:rgba(6,10,22,0.72);
+    border:1px solid var(--grid);
+    padding:10px 14px;
+    backdrop-filter: blur(2px);
+    pointer-events:auto;
+  }
+  #title-panel{ text-transform:uppercase; }
+  #title-panel .t1{ color:var(--hull-cyan); font-size:14px; font-weight:bold; letter-spacing:3px; }
+  #title-panel .t2{ color:var(--paper-dim); font-size:10px; margin-top:2px;}
+
+  #price-panel{ text-align:right; min-width:220px; }
+  #price-panel .price{ font-size:24px; font-weight:bold; color:var(--paper); }
+  #price-panel .price.up{ color:var(--hull-cyan); }
+  #price-panel .price.down{ color:var(--hull-magenta); }
+  #price-panel .chg{ font-size:12px; margin-top:2px; }
+  #price-panel .chg.up{ color:var(--hull-cyan); }
+  #price-panel .chg.down{ color:var(--hull-magenta); }
+  #price-panel .stamp{ color:var(--paper-dim); font-size:9px; margin-top:6px;}
+  #connect-btn{
+    margin-top:8px; width:100%;
+    background:transparent; color:var(--hull-cyan);
+    border:1px solid var(--hull-cyan-dim);
+    font-family:inherit; font-size:9px; letter-spacing:1.5px; text-transform:uppercase;
+    padding:5px 8px; cursor:pointer;
+  }
+  #connect-btn:hover{ background:rgba(94,231,255,0.1); }
+  #connect-btn:disabled{ opacity:0.4; cursor:default; }
+  #connect-btn.live{ color:var(--amber); border-color:var(--amber); }
+
+  #bottom{
+    position:absolute; left:0; right:0; bottom:0;
+    display:flex; flex-direction:column; gap:8px;
+    padding:12px 18px 16px;
+  }
+
+  #momentum-row{ display:flex; align-items:center; gap:10px; }
+  #momentum-label{ font-size:10px; color:var(--paper-dim); text-transform:uppercase; letter-spacing:2px; min-width:110px;}
+  #momentum-bar{
+    flex:1; height:10px; background:#0d1526; border:1px solid var(--grid);
+    position:relative; overflow:hidden;
+  }
+  #momentum-fill{
+    position:absolute; top:0; bottom:0; left:50%;
+    background:linear-gradient(90deg, var(--hull-magenta), var(--hull-cyan));
+    width:0%;
+    transition:left 0.4s ease, width 0.4s ease;
+  }
+  #momentum-mid{ position:absolute; left:50%; top:-3px; bottom:-3px; width:1px; background:var(--paper-dim); }
+
+  #sides{ display:flex; justify-content:space-between; font-size:11px; }
+  .side-block{ display:flex; gap:8px; align-items:center; }
+  .side-block .dot{ width:8px; height:8px; border-radius:50%; }
+  .bull-dot{ background:var(--hull-cyan); box-shadow:0 0 6px var(--hull-cyan); }
+  .bear-dot{ background:var(--hull-magenta); box-shadow:0 0 6px var(--hull-magenta); }
+  .side-name{ text-transform:uppercase; letter-spacing:2px; }
+  .bull-name{ color:var(--hull-cyan); }
+  .bear-name{ color:var(--hull-magenta); }
+  .side-sub{ color:var(--paper-dim); font-size:9px; }
+
+  #feed{
+    height:78px; overflow:hidden;
+    border-top:1px solid var(--grid);
+    padding-top:6px;
+    font-size:10.5px;
+    color:var(--paper-dim);
+    display:flex; flex-direction:column-reverse;
+    gap:2px;
+  }
+  #feed .entry{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #feed .entry .tag{ color:var(--amber); }
+  #feed .entry.bull{ color:var(--hull-cyan); }
+  #feed .entry.bear{ color:var(--hull-magenta); }
+
+  #status{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    text-align:center; pointer-events:none;
+    font-size:12px; color:var(--paper-dim); letter-spacing:2px;
+    text-transform:uppercase;
+  }
+  #status.hidden{ display:none; }
+
+  #victory{
+    position:absolute; top:36%; left:50%; transform:translate(-50%,-50%) scale(0.9);
+    text-align:center; pointer-events:none; opacity:0; transition:opacity 0.3s, transform 0.3s;
+    text-transform:uppercase; letter-spacing:4px; font-size:26px; font-weight:bold;
+    text-shadow:0 0 20px currentColor;
+  }
+  #victory.show{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+
+  @media (max-width:640px){
+    #hud{ font-size:9px; padding:10px 10px; }
+    #price-panel .price{ font-size:18px; }
+    #price-panel{ min-width:150px; }
+    #title-panel .t1{ font-size:11px; letter-spacing:2px;}
+    #feed{ height:56px; font-size:9px; }
+    #momentum-label{ min-width:70px; font-size:8px; }
+    #connect-btn{ font-size:8px; padding:4px 6px; }
+  }
+</style>
+</head>
+<body>
+<noscript>
+  <div style="position:fixed;inset:0;background:#04060f;color:#dbe6f0;font-family:monospace;
+              display:flex;align-items:center;justify-content:center;text-align:center;
+              padding:24px;font-size:14px;line-height:1.6;">
+    This page needs JavaScript to run the battle. It looks like it opened in a viewer that
+    doesn't execute scripts (common with a phone's built-in "Downloads" preview).<br><br>
+    Try: open your file manager → long-press the file → "Open with" → choose Chrome or
+    Firefox directly.
+  </div>
+</noscript>
+<div id="wrap">
+  <canvas id="stage"></canvas>
+  <div id="vignette"></div>
+
+  <div id="hud">
+    <div id="title-panel" class="panel">
+      <div class="t1">⟨ BTC SPACE FRONT ⟩</div>
+      <div class="t2">live order-front · fleet vs fleet</div>
+    </div>
+    <div id="price-panel" class="panel">
+      <div class="price" id="price-val">$--</div>
+      <div class="chg" id="price-chg">24h --</div>
+      <div class="stamp" id="price-stamp">running on simulated feed</div>
+      <button id="connect-btn" type="button">Connect live feed</button>
+    </div>
+  </div>
+
+  <div id="status">establishing uplink to price grid…</div>
+  <div id="victory"></div>
+
+  <div id="bottom">
+    <div id="momentum-row">
+      <div id="momentum-label">Front pressure</div>
+      <div id="momentum-bar"><div id="momentum-mid"></div><div id="momentum-fill"></div></div>
+    </div>
+    <div class="sides">
+      <div class="side-block">
+        <div class="dot bull-dot"></div>
+        <div>
+          <div class="side-name bull-name">Aurora Armada</div>
+          <div class="side-sub">advances on BTC strength</div>
+        </div>
+      </div>
+      <div class="side-block">
+        <div>
+          <div class="side-name bear-name" style="text-align:right;">Umbral Horde</div>
+          <div class="side-sub" style="text-align:right;">advances on BTC weakness</div>
+        </div>
+        <div class="dot bear-dot"></div>
+      </div>
+    </div>
+    <div id="feed"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // Never let an uncaught error/rejection bubble up as a raw browser error —
+  // log it to the in-page feed instead once the feed exists.
+  let deferredErrors = [];
+  window.addEventListener('error', (e)=>{ safeLogError('script: ' + (e.message||'unknown')); });
+  window.addEventListener('unhandledrejection', (e)=>{ safeLogError('promise: ' + (e.reason && e.reason.message ? e.reason.message : 'unknown')); });
+  function safeLogError(msg){
+    try{ if(typeof logFeed === 'function') logFeed(msg); else deferredErrors.push(msg); }
+    catch(_){ /* swallow — never let logging itself throw */ }
+  }
+
+  // ---------- Canvas / stars setup ----------
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d');
+  let W=0, H=0, DPR=Math.min(window.devicePixelRatio||1, 2);
+
+  function resize(){
+    W = canvas.clientWidth = window.innerWidth;
+    H = canvas.clientHeight = window.innerHeight;
+    canvas.width = W*DPR; canvas.height = H*DPR;
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // starfield layers
+  function makeStars(n, speed, size){
+    const arr = [];
+    for(let i=0;i<n;i++){
+      arr.push({ x: Math.random()*2000, y: Math.random()*1200, speed, size: size*(0.5+Math.random()) });
+    }
+    return arr;
+  }
+  const starLayers = [
+    makeStars(90, 4, 1.0),
+    makeStars(60, 9, 1.6),
+    makeStars(35, 16, 2.2),
+  ];
+
+  // distant nebula blobs (static-ish, colored by side balance later)
+  const nebulae = [
+    {x:0.15,y:0.25,r:280,hue:'cyan'},
+    {x:0.85,y:0.7,r:320,hue:'magenta'},
+    {x:0.5,y:0.15,r:200,hue:'amber'},
+  ];
+
+  // ---------- Battle state ----------
+  // frontPos: 0 = center, -1 = fully bear (left) win edge, +1 = fully bull (right) win edge
+  let frontPos = 0;
+  let frontTarget = 0;
+  let momentum = 0; // -1..1 smoothed, drives visual pressure bar
+  let lastPrice = null;
+  let firstPrice = null;
+  let priceHistory = []; // {t, p}
+  let roundBaseline = null; // price at start of current round, for win detection
+  const ROUND_SPAN_PCT = 0.35; // % move from baseline needed to win a round (tunable "space" scale)
+
+  let bullShips = [];
+  let bearShips = [];
+  const SHIP_COUNT = 9;
+
+  function initFleets(){
+    bullShips = [];
+    bearShips = [];
+    for(let i=0;i<SHIP_COUNT;i++){
+      bullShips.push(makeShip('bull', i));
+      bearShips.push(makeShip('bear', i));
+    }
+  }
+
+  function makeShip(side, i){
+    return {
+      side,
+      lane: i,
+      wobble: Math.random()*Math.PI*2,
+      wobbleSpeed: 0.5+Math.random()*0.7,
+      scale: 0.75+Math.random()*0.6,
+      fireCooldown: Math.random()*3,
+      kind: Math.random()<0.2 ? 'heavy' : (Math.random()<0.5 ? 'fighter':'light'),
+    };
+  }
+  initFleets();
+
+  // projectiles & particles
+  let bolts = [];    // {x,y,vx,vy,side,life}
+  let particles = []; // explosions {x,y,vx,vy,life,maxLife,color,size}
+
+  function spawnExplosion(x,y,color,power){
+    const n = 14 + Math.floor(power*22);
+    for(let i=0;i<n;i++){
+      const ang = Math.random()*Math.PI*2;
+      const spd = (0.6+Math.random()*2.4) * (0.6+power);
+      particles.push({
+        x,y,
+        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
+        life: 0, maxLife: 26+Math.random()*24,
+        color, size: 1.5+Math.random()*2.5*(0.6+power)
+      });
+    }
+  }
+
+  // ---------- Feed log ----------
+  const feedEl = document.getElementById('feed');
+  function logFeed(msg, cls){
+    const div = document.createElement('div');
+    div.className = 'entry' + (cls ? (' '+cls) : '');
+    const time = new Date();
+    const hh = String(time.getHours()).padStart(2,'0');
+    const mm = String(time.getMinutes()).padStart(2,'0');
+    const ss = String(time.getSeconds()).padStart(2,'0');
+    div.innerHTML = `<span class="tag">[${hh}:${mm}:${ss}]</span> ${msg}`;
+    feedEl.prepend(div);
+    while(feedEl.children.length > 40){ feedEl.removeChild(feedEl.lastChild); }
+  }
+
+  // ---------- HUD updates ----------
+  const priceVal = document.getElementById('price-val');
+  const priceChg = document.getElementById('price-chg');
+  const priceStamp = document.getElementById('price-stamp');
+  const momentumFill = document.getElementById('momentum-fill');
+  const statusEl = document.getElementById('status');
+  const victoryEl = document.getElementById('victory');
+
+  function fmtUsd(v){
+    return '$' + v.toLocaleString(undefined,{maximumFractionDigits: v<10 ? 4:2, minimumFractionDigits:2});
+  }
+
+  function updateMomentumBar(){
+    // momentum in [-1,1] -> bar centered at 50%, fills toward the leading side
+    const pct = Math.max(-1, Math.min(1, momentum));
+    const widthPct = Math.abs(pct) * 50;
+    if(pct >= 0){
+      momentumFill.style.left = '50%';
+      momentumFill.style.width = widthPct + '%';
+    } else {
+      momentumFill.style.left = (50 - widthPct) + '%';
+      momentumFill.style.width = widthPct + '%';
+    }
+  }
+
+  function triggerVictory(side){
+    victoryEl.textContent = side === 'bull' ? '⚡ AURORA BREAKTHROUGH ⚡' : '☠ UMBRAL BREAKTHROUGH ☠';
+    victoryEl.style.color = side === 'bull' ? 'var(--hull-cyan)' : 'var(--hull-magenta)';
+    victoryEl.classList.add('show');
+    logFeed(side==='bull' ? 'Aurora Armada breaks the line — round won.' : 'Umbral Horde breaks the line — round won.', side==='bull'?'bull':'bear');
+    setTimeout(()=>{ victoryEl.classList.remove('show'); }, 2200);
+    // reset round
+    roundBaseline = lastPrice;
+    frontTarget = 0;
+    frontPos = 0;
+  }
+
+  // ---------- Price feed ----------
+  // Three free, no-key, CORS-enabled sources tried in order. If the primary
+  // (CoinGecko) is rate-limited or blocked, the visualization falls back to
+  // Binance, then Coinbase, so the fleet never freezes because of one API.
+  const SOURCES = [
+    {
+      name: 'coingecko',
+      url: 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true',
+      parse: (data) => ({
+        price: data.bitcoin.usd,
+        chg24h: typeof data.bitcoin.usd_24h_change === 'number' ? data.bitcoin.usd_24h_change : null
+      })
+    },
+    {
+      name: 'binance',
+      url: 'https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT',
+      parse: (data) => ({
+        price: parseFloat(data.lastPrice),
+        chg24h: parseFloat(data.priceChangePercent)
+      })
+    },
+    {
+      name: 'coinbase',
+      url: 'https://api.coinbase.com/v2/prices/BTC-USD/spot',
+      parse: (data) => ({
+        price: parseFloat(data.data.amount),
+        chg24h: null
+      })
+    }
+  ];
+
+  let sourceIndex = 0;
+  let simMode = true;       // starts true — no network call happens automatically on load
+  let simPrice = 65000;     // seed if no real price was ever received
+  const connectBtn = document.getElementById('connect-btn');
+
+  async function fetchFromSource(src){
+    let res;
+    try{
+      res = await fetch(src.url, { method: 'GET', headers: { 'Accept': 'application/json' } });
+    }catch(networkErr){
+      // covers CSP blocks, CORS blocks, offline, DNS failures, etc.
+      throw new Error(src.name + ' unreachable');
+    }
+    if(!res.ok) throw new Error(src.name + ' bad status ' + res.status);
+    const data = await res.json();
+    const parsed = src.parse(data);
+    if(!parsed || !isFinite(parsed.price)) throw new Error(src.name + ' malformed payload');
+    return parsed;
+  }
+
+  function stepSimulatedPrice(){
+    // gentle random walk so the scene stays lively and plausible offline
+    const drift = (Math.random()-0.5) * (simPrice * 0.0025);
+    simPrice = Math.max(1000, simPrice + drift);
+    handleNewPrice(simPrice, null);
+    priceStamp.textContent = 'running on simulated feed';
+  }
+
+  async function tryLiveSources(){
+    const order = [];
+    for(let i=0;i<SOURCES.length;i++){
+      order.push(SOURCES[(sourceIndex+i) % SOURCES.length]);
+    }
+    for(const src of order){
+      try{
+        const parsed = await fetchFromSource(src);
+        handleNewPrice(parsed.price, parsed.chg24h);
+        sourceIndex = SOURCES.indexOf(src);
+        statusEl.classList.add('hidden');
+        priceStamp.textContent = 'last sync ' + new Date().toLocaleTimeString() + ' · ' + src.name;
+        return true;
+      }catch(err){
+        continue;
+      }
+    }
+    return false;
+  }
+
+  let livePollHandle = null;
+
+  async function attemptConnect(){
+    connectBtn.disabled = true;
+    connectBtn.textContent = 'Connecting…';
+    const ok = await tryLiveSources().catch(()=>false);
+    if(ok){
+      simMode = false;
+      connectBtn.textContent = 'Live feed connected';
+      connectBtn.classList.add('live');
+      logFeed('Live uplink established.');
+      if(livePollHandle) clearInterval(livePollHandle);
+      livePollHandle = setInterval(async ()=>{
+        const stillOk = await tryLiveSources().catch(()=>false);
+        if(!stillOk){
+          simMode = true;
+          connectBtn.disabled = false;
+          connectBtn.textContent = 'Reconnect live feed';
+          connectBtn.classList.remove('live');
+          logFeed('Live uplink lost — back to simulated feed.');
+        }
+      }, 15000);
+    } else {
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Retry live feed';
+      logFeed('Could not reach a live price source (likely blocked by this preview\u2019s network sandbox). Try opening the downloaded file directly in a browser tab.');
+    }
+  }
+
+  connectBtn.addEventListener('click', ()=>{ attemptConnect(); });
+
+  // simulated feed runs continuously; live mode simply overrides its updates
+  setInterval(()=>{ if(simMode) stepSimulatedPrice(); }, 2500);
+
+  function handleNewPrice(price, chg24h){
+    const now = Date.now();
+    if(firstPrice === null){ firstPrice = price; roundBaseline = price; }
+    const prev = lastPrice;
+    lastPrice = price;
+    priceHistory.push({t:now, p:price});
+    while(priceHistory.length > 60) priceHistory.shift();
+
+    // HUD price
+    priceVal.textContent = fmtUsd(price);
+    priceVal.classList.remove('up','down');
+    if(prev !== null){
+      priceVal.classList.add(price >= prev ? 'up':'down');
+    }
+    if(typeof chg24h === 'number'){
+      priceChg.textContent = '24h ' + (chg24h>=0?'+':'') + chg24h.toFixed(2) + '%';
+      priceChg.classList.remove('up','down');
+      priceChg.classList.add(chg24h>=0?'up':'down');
+    }
+    priceStamp.textContent = 'last sync ' + new Date(now).toLocaleTimeString();
+
+    // tick delta -> instantaneous pressure event
+    if(prev !== null && prev !== price){
+      const pctMove = (price - prev) / prev * 100;
+      const absMove = Math.abs(pctMove);
+      momentum = Math.max(-1, Math.min(1, momentum*0.5 + Math.sign(pctMove)*Math.min(1, absMove*40)));
+
+      if(absMove > 0.015){
+        const side = pctMove > 0 ? 'bull' : 'bear';
+        const power = Math.min(1, absMove*8);
+        fireVolley(side, power);
+        if(absMove > 0.05){
+          logFeed(`${side==='bull'?'Aurora':'Umbral'} strike — BTC ${pctMove>0?'+':''}${pctMove.toFixed(3)}% tick`, side);
+        }
+      }
+    }
+
+    // baseline round progress -> front position target
+    if(roundBaseline){
+      const roundPct = (price - roundBaseline) / roundBaseline * 100;
+      frontTarget = Math.max(-1, Math.min(1, roundPct / ROUND_SPAN_PCT));
+      if(roundPct >= ROUND_SPAN_PCT){
+        triggerVictory('bull');
+      } else if(roundPct <= -ROUND_SPAN_PCT){
+        triggerVictory('bear');
+      }
+    }
+  }
+
+  function fireVolley(side, power){
+    const emitters = side==='bull' ? bullShips : bearShips;
+    const n = Math.max(1, Math.round(power*4));
+    for(let i=0;i<n;i++){
+      const s = emitters[Math.floor(Math.random()*emitters.length)];
+      spawnBoltFromShip(s, power);
+    }
+  }
+
+  // ---------- Layout helpers ----------
+  function frontX(){
+    // maps frontPos[-1,1] to screen x between 20% and 80% of width
+    const t = (frontPos+1)/2;
+    return W*0.22 + t*(W*0.56);
+  }
+  function shipPos(ship){
+    const fx = frontX();
+    const spread = W*0.16;
+    const laneFrac = (ship.lane+0.5)/SHIP_COUNT;
+    const yBase = H*0.30 + laneFrac*(H*0.40);
+    const wob = Math.sin(ship.wobble)*6;
+    let x;
+    if(ship.side==='bull'){
+      x = fx - spread*0.25 - laneFrac*spread*0.8;
+    } else {
+      x = fx + spread*0.25 + laneFrac*spread*0.8;
+    }
+    return {x, y: yBase+wob};
+  }
+
+  function spawnBoltFromShip(ship, power){
+    const p = shipPos(ship);
+    const fx = frontX();
+    const dir = ship.side==='bull' ? 1 : -1;
+    bolts.push({
+      x:p.x, y:p.y, vx: dir*(6+power*4), vy:(Math.random()-0.5)*0.6,
+      side:ship.side, life:0, power
+    });
+  }
+
+  // ---------- Drawing ----------
+  function drawStarfield(dt){
+    ctx.fillStyle = '#04060f';
+    ctx.fillRect(0,0,W,H);
+
+    // nebula glow tinted by which side currently leads
+    nebulae.forEach(neb=>{
+      const cx = neb.x*W, cy = neb.y*H;
+      let color;
+      if(neb.hue==='cyan') color = 'rgba(94,231,255,0.05)';
+      else if(neb.hue==='magenta') color = 'rgba(255,77,141,0.05)';
+      else color = 'rgba(255,180,84,0.035)';
+      const grad = ctx.createRadialGradient(cx,cy,0,cx,cy,neb.r);
+      grad.addColorStop(0,color);
+      grad.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0,0,W,H);
+    });
+
+    starLayers.forEach(layer=>{
+      ctx.fillStyle = 'rgba(219,230,240,0.85)';
+      layer.forEach(s=>{
+        s.x -= s.speed*dt;
+        if(s.x < -10){ s.x = W+10; s.y = Math.random()*H; }
+        ctx.globalAlpha = 0.4+0.6*(s.size/2.8);
+        ctx.beginPath();
+        ctx.arc(s.x % (W+20), (s.y/1200)*H, s.size, 0, Math.PI*2);
+        ctx.fill();
+      });
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  function drawFrontLine(){
+    const fx = frontX();
+    const grad = ctx.createLinearGradient(fx-40,0,fx+40,0);
+    grad.addColorStop(0, 'rgba(94,231,255,0.0)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,0.18)');
+    grad.addColorStop(1, 'rgba(255,77,141,0.0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(fx-40, H*0.18, 80, H*0.62);
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.setLineDash([4,6]);
+    ctx.beginPath();
+    ctx.moveTo(fx, H*0.18);
+    ctx.lineTo(fx, H*0.80);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function drawShip(ship, t){
+    const p = shipPos(ship);
+    const dir = ship.side==='bull' ? 1 : -1;
+    const col = ship.side==='bull' ? '#5ee7ff' : '#ff4d8d';
+    const dim = ship.side==='bull' ? '#1c6b7a' : '#7a1c46';
+    const s = ship.scale * (ship.kind==='heavy'?1.5:(ship.kind==='fighter'?1.1:0.85));
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(dir,1);
+
+    // engine glow
+    ctx.beginPath();
+    const glowGrad = ctx.createRadialGradient(-14*s,0,0,-14*s,0,10*s);
+    glowGrad.addColorStop(0, col+'cc');
+    glowGrad.addColorStop(1, col+'00');
+    ctx.fillStyle = glowGrad;
+    ctx.arc(-14*s,0,10*s,0,Math.PI*2);
+    ctx.fill();
+
+    // hull
+    ctx.beginPath();
+    ctx.moveTo(16*s, 0);
+    ctx.lineTo(-6*s, -6*s);
+    ctx.lineTo(-14*s, -3*s);
+    ctx.lineTo(-14*s, 3*s);
+    ctx.lineTo(-6*s, 6*s);
+    ctx.closePath();
+    ctx.fillStyle = dim;
+    ctx.fill();
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // cockpit dot
+    ctx.beginPath();
+    ctx.arc(4*s,0,2*s,0,Math.PI*2);
+    ctx.fillStyle = col;
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawBolts(dt){
+    ctx.lineCap = 'round';
+    bolts.forEach(b=>{
+      b.x += b.vx*dt;
+      b.y += b.vy*dt;
+      b.life += dt;
+      const col = b.side==='bull' ? '#5ee7ff' : '#ff4d8d';
+      ctx.strokeStyle = col;
+      ctx.globalAlpha = Math.max(0, 1 - b.life/40);
+      ctx.lineWidth = 2+b.power*2;
+      ctx.beginPath();
+      ctx.moveTo(b.x,b.y);
+      ctx.lineTo(b.x - b.vx*2, b.y - b.vy*2);
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+
+    // collision near front line -> explosion
+    const fx = frontX();
+    bolts = bolts.filter(b=>{
+      const dir = b.side==='bull' ? 1 : -1;
+      const reached = (dir>0 && b.x>=fx) || (dir<0 && b.x<=fx);
+      if(reached || b.life>50){
+        if(reached){
+          spawnExplosion(fx + (Math.random()-0.5)*20, b.y, b.side==='bull'?'#5ee7ff':'#ff4d8d', b.power);
+        }
+        return false;
+      }
+      return true;
+    });
+  }
+
+  function drawParticles(dt){
+    particles.forEach(p=>{
+      p.x += p.vx*dt*0.6;
+      p.y += p.vy*dt*0.6;
+      p.life += dt;
+      const t = p.life/p.maxLife;
+      ctx.globalAlpha = Math.max(0, 1-t);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y, p.size*(1-t*0.5), 0, Math.PI*2);
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+    particles = particles.filter(p=>p.life < p.maxLife);
+  }
+
+  // ---------- Main loop ----------
+  let lastT = performance.now();
+  function loop(now){
+    const dt = Math.min(3, (now-lastT)/16.6);
+    lastT = now;
+
+    // ease front position toward target
+    frontPos += (frontTarget - frontPos)*0.03*dt;
+    updateMomentumBar();
+
+    drawStarfield(dt);
+    drawFrontLine();
+
+    bullShips.forEach(s=>{ s.wobble += s.wobbleSpeed*0.02*dt; drawShip(s); });
+    bearShips.forEach(s=>{ s.wobble += s.wobbleSpeed*0.02*dt; drawShip(s); });
+
+    drawBolts(dt);
+    drawParticles(dt);
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ambient occasional skirmish fire even on quiet ticks, so it never looks frozen
+  setInterval(()=>{
+    if(Math.random()<0.6){
+      const side = Math.random()<0.5?'bull':'bear';
+      fireVolley(side, 0.15+Math.random()*0.15);
+    }
+  }, 1400);
+
+  // ---------- Kickoff ----------
+  statusEl.classList.add('hidden');
+  logFeed('Running in simulated mode. Tap "Connect live feed" for real BTC data.');
+  stepSimulatedPrice();
+
+})();
+</script>
+</body>
+</html>
